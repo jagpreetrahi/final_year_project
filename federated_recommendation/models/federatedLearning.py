@@ -468,8 +468,56 @@ class FederatedTrainer:
             'test_acc': test_results['accuracy']
         }
     
+    def train(self, num_rounds: int, local_epochs: int = 5):
+        """
+        Run complete federated learning training
+        
+        Args:
+            num_rounds: Number of FL rounds
+            local_epochs: Local epochs per round
+        """
+        print(f"\n{'='*70}")
+        print(f"FEDERATED LEARNING TRAINING")
+        print(f"{'='*70}")
+        print(f"Clients: {self.num_clients}")
+        print(f"Clients per round: {self.clients_per_round}")
+        print(f"Total rounds: {num_rounds}")
+        print(f"Local epochs: {local_epochs}")
 
+        for round_num in range(1, num_rounds + 1):
+            self.train_round(round_num, local_epochs)
 
+        print(f"\n{'='*70}")
+        print(f"FEDERATED LEARNING COMPLETE!")
+        print(f"{'='*70}")
+        print(f"Final Test Accuracy: {self.metrics['test_acc'][-1]:.2f}%")
+
+    def get_global_model(self) -> nn.Module:
+        """ Return trained global model """
+        return self.server.global_model        
+    
+# =====================
+# Testing Code
+# ====================
+
+if __name__ == "__main__":
+    print("="*70)
+    print("Testing Federated Learning - Phase 6")
+    print("="*70)
+    
+    # This would normally import your actual model and dataset
+    # For now, we'll show the structure
+    
+    print("\nFederated Learning structure ready!")
+    print("\nTo use:")
+    print("1. Import your MultiModalModel")
+    print("2. Load your datasets")
+    print("3. Create FederatedTrainer")
+    print("4. Run trainer.train(num_rounds=10)")
+    
+    print("\n" + "="*70)
+    print("Federated Learning Implementation Complete! ✓")
+    print("="*70)
             
                
 
