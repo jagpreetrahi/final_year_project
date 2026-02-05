@@ -138,8 +138,8 @@ class MutltiModalModel(nn.Module):
         self.text_encoder = text_encoder
         self.image_encoder=  image_encoder
 
-        text_dim = text_encoder.get_embedding_dim()
-        image_dim = image_encoder.get_embedding_dim()
+        text_dim = text_encoder.get_embeddings_dim()
+        image_dim = image_encoder.get_embeddings_dim()
 
         #Fusion layer 
         if fusion_type == "simple":

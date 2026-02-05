@@ -1,0 +1,1 @@
+CHECKPOINT_PATH = "results/checkpoints/fl_checkpoint.pt"

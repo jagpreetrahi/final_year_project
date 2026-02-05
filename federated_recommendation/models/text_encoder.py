@@ -30,7 +30,7 @@ class TextEncoder(nn.Module):
         :param dropout: Dropout probability
         
         """
-        super(TextEncoder, self).__init__
+        super(TextEncoder, self).__init__()
 
         self.model_name = model_name
         self.hidden_dim = hidden_dim

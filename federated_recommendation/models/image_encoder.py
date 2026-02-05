@@ -53,7 +53,7 @@ class ImageEncoder(nn.Module):
             raise ValueError(f"Unknown model: {model_name}")
 
         #Remove the final classification layer
-        self.features = nn.Sequential(*list(resnet.children()[:-1]))
+        self.features = nn.Sequential(*list(resnet.children())[:-1])
 
         #freeze backbone if specified
         if freeze_backbone:  
@@ -89,7 +89,7 @@ class ImageEncoder(nn.Module):
         
         """
         #Extract features
-        if self.features.training and any(p.require_grad for p in self.features.parameters()):
+        if self.features.training and any(p.requires_grad for p in self.features.parameters()):
             features = self.features(images)
         else:
             with torch.no_grad():
@@ -106,7 +106,7 @@ class ImageEncoder(nn.Module):
 
         return embeddings
 
-    def get_embedding_dim(self) -> int:
+    def get_embeddings_dim(self) -> int:
         return self.hidden_dim
 
     def unfreeze(self, num_layers: Optional[int] = None):

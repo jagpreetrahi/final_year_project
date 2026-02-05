@@ -19,6 +19,8 @@ import copy
 from typing import List, Dict, Tuple
 from tqdm import tqdm
 import numpy as np
+from utils.checkpoint_utility import save_checkpoint, load_checkpoint
+from configs .train_config import CHECKPOINT_PATH
 
 # federated client
 class FederatedClient:
@@ -84,12 +86,12 @@ class FederatedClient:
             for batch in self.train_loader:
                 # move data to device
                 input_ids = batch['input_ids'].to(self.device)
-                attention_mark = batch['attention_mark'].to(self.device)
+                attention_mask = batch['attention_mask'].to(self.device)
                 images = batch['image'].to(self.device)
                 labels = batch['label'].to(self.device)
 
                 # forward pass
-                logits = self.model(input_ids, attention_mark, images)
+                logits = self.model(input_ids, attention_mask, images)
                 loss = self.criterion(logits, labels)
 
                 # backward pass
@@ -154,7 +156,8 @@ class FederatedServer:
             model: Global model architecture
             device: Device to run on
         """ 
-             
+        self.device = device
+        self.global_model = model.to(device)     
         print(f"Server initialized")
         print(f"Global model parameters: {sum(p.numel() for p in model.parameters()):,}")
 
@@ -208,6 +211,10 @@ class FederatedServer:
 
         # weight each client by their dataset sixe
         for key in aggregated.keys():
+
+            if not torch.is_floating_point(aggregated[key]):
+                aggregated[key] = client_weights[0][key]
+                continue
             #start with zeros
             aggregated[key] = torch.zeros_like(aggregated[key])
 
@@ -260,7 +267,7 @@ class FederatedServer:
         with torch.no_grad():
             for batch in test_loader:
                 input_ids = batch['input_ids'].to(self.device)
-                attention_mask = batch['attention-mask'].to(self.device)
+                attention_mask = batch['attention_mask'].to(self.device)
                 images = batch['image'].to(self.device)
                 labels = batch['label'].to(self.device)
 
@@ -269,7 +276,7 @@ class FederatedServer:
 
                 total_loss += loss.item()
                 _, predicted = torch.max(logits, 1)
-                total += labels.size()
+                total += labels.size(0)
                 correct += (predicted == labels).sum().item()
 
         avg_loss = total_loss / len(test_loader)
@@ -319,7 +326,7 @@ class FederatedTrainer:
        self.server = FederatedServer(model, device)
 
        # create clients with data splits
-       self.client = self._create_clients(train_dataset)
+       self.clients = self._create_clients(train_dataset)
 
        # test loader (server use this )
        self.test_loader = DataLoader(
@@ -336,6 +343,17 @@ class FederatedTrainer:
             'test_loss': [],
             'test_acc': []
         }
+        #checkpoint load
+       self.start_round = 1
+       checkpoint  = load_checkpoint(CHECKPOINT_PATH, self.device) 
+        
+       if checkpoint is not None:
+            print()
+            self.server.global_model.load_state_dict(
+                checkpoint["global_model_state"]
+            )
+            self.metrics  = checkpoint["metrics"]
+            self.start_round = checkpoint["round"] + 1
        
     def _create_clients(self, train_dataset) -> List[FederatedClient]:
         """
@@ -460,6 +478,15 @@ class FederatedTrainer:
         print(f"  Global Test Loss: {test_results['loss']:.4f}")
         print(f"  Global Test Acc: {test_results['accuracy']:.2f}%")
 
+        save_checkpoint(
+            path=CHECKPOINT_PATH,
+            state={
+                "round": round_num,
+                "global_model_state": self.server.global_model.state_dict(),
+                "metrics": self.metrics
+            }
+        )
+
         return {
             'round': round_num,
             'train_loss': avg_client_loss,
@@ -484,7 +511,7 @@ class FederatedTrainer:
         print(f"Total rounds: {num_rounds}")
         print(f"Local epochs: {local_epochs}")
 
-        for round_num in range(1, num_rounds + 1):
+        for round_num in range(self.start_round, num_rounds + 1):
             self.train_round(round_num, local_epochs)
 
         print(f"\n{'='*70}")
