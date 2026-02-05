@@ -1,1 +1,3 @@
 fed_rec_env
+results/checkpoints/
+*.pth
