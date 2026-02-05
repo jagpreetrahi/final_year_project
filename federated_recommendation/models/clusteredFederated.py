@@ -323,55 +323,339 @@ class KnowledgeTransfer:
               loss.backward()
               optimizer.step()    
 
+class IFCAClusteredFederatedLearning:
+    """
+    Clustered Federated Learning with IFCA
+    
+    YOUR COMPLETE INNOVATION with IFCA!
+    
+    Advantages over K-means clustering:
+    1. Clusters based on actual model performance (not arbitrary features)
+    2. Adapts clusters during training (not static)
+    3. Users naturally group by data similarity
+    4. More interpretable (users with similar data patterns cluster together)
+    
+    Process:
+    1. Initialize K cluster models randomly
+    2. IFCA clustering: Assign users based on model performance
+    3. Train each cluster with federated learning
+    4. Knowledge transfer between clusters
+    5. Repeat IFCA clustering with updated models
+    6. Final aggregation
+    """   
+         
+    def __init__ (
+        self,
+        model: nn.Module,
+        train_dataset,
+        test_dataset,
+        num_clients: int,
+        num_clusters: int,
+        device: torch.device,
+        batch_size: int = 32    
+    ):
+        """
+        Args:
+            model: Model architecture
+            train_dataset: Training dataset
+            test_dataset: Test dataset
+            num_clients: Total number of clients
+            num_clusters: Number of clusters (K in IFCA)
+            device: Device
+            batch_size: Batch size
+        """ 
+        self.device = device
+        self.num_clients =  num_clients
+        self.num_clusters = num_clusters
+        self.batch_size= batch_size
 
+        # import federatedCLient
+        import sys
+        import os
+        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+        from federatedLearning import FederatedClient
 
+        #create clients
+        self.clients = self.create_clients(train_dataset, model, FederatedClient)
 
+        # initialize IFCA cluster models (random initialization)
+        self.clusters = self._initialize_ifca_clusters(model)
+
+        #test loader
+        self.test_loader = DataLoader(
+            test_dataset,
+            batch_size=batch_size,
+            shuffle=False
+        )
+
+        # metrics 
+        self.metrics = {
+            'cluster_acc': [],
+            'final_acc': [],
+            'cluster_size_history' : []
+        }
+
+    def _create_clients(self, train_dataset, model, FederatedClient) -> List:
+        """Create clients with data splits """
+
+        num_samples = len(train_dataset)
+        samples_per_client = num_samples // self.num_clients
+
+        clients = []
+
+        for i in range(self.num_clients):
+            start_idx = i * samples_per_client
+            if i  == self.num_clients - 1:
+                end_idx = num_samples
+            else:
+                end_idx = ( i + 1 ) * samples_per_client
+
+            client_indices = list(range(start_idx, end_idx))
+            client_dataset = Subset(train_dataset, client_indices)
+
+            client_loader = DataLoader(
+                client_dataset,
+                batch_size=self.batch_size,
+                shuffle=True
+            )
+
+            client_model = copy.deepcopy(model)
+            client = FederatedClient(
+                client_id = i,
+                model = client_model,
+                train_loader = client_loader,
+                device=self.device
+            )     
+            clients.append(clients)
+
+        return clients
+    
+    def _initialize_ifca_clusters(self, base_model) -> List[IFCACLusterModel]:
+        """
+        Initialize K cluster models with random weights
         
+        In IFCA, we start with random clusters and let them specialize
+        through the iterative assignment process
+        """
+        print(f"\nInitializing {self.num_clusters} IFCA cluster models...")
+
+        clusters = []
+
+        for cluster_id in range(self.num_clusters):
+            #create a copy with different random initialization
+            cluster_model = copy.deepcopy(base_model)
+
+            #add small random perturbation to differentiate clusters
+            with  torch.no_grad():
+                for param in cluster_model.parameters():
+                    if param.requires_grad:
+                        param.add_(torch.randn_like(param) * 0.01)
+
+            cluster = IFCACLusterModel(
+                cluster_id=cluster_id,
+                model=cluster_model,
+                device=self.device
+            )   
+
+            clusters.append(cluster)
+
+        return clusters
+    
+    def train(
+       self,
+       num_ifca_round: int =3,
+       cluster_train_rounds: int = 5,
+       clients_per_round: int = 3,
+       local_epochs: int = 3,
+       enable_knowledge_transfer: bool = True     
+    ):
+        """
+        Train with IFCA clustering
         
+        Args:
+            num_ifca_rounds: Number of IFCA iterations (reassign clusters)
+            cluster_train_rounds: FL rounds within each cluster
+            clients_per_round: Clients per FL round
+            local_epochs: Local training epochs
+            enable_knowledge_transfer: Enable inter-cluster transfer
+        """ 
+        print(f"\n{'='*70}")
+        print(f"IFCA CLUSTERED FEDERATED LEARNING")
+        print(f"{'='*70}")
+        print(f"Clusters (K): {self.num_clusters}")
+        print(f"Clients: {self.num_clients}")
+        print(f"IFCA Rounds: {num_ifca_round}")
+        print(f"Knowledge Transfer: {'Enabled' if enable_knowledge_transfer else 'Disabled'}")
 
+        for ifca_round in range(num_ifca_round):
+            print(f"\n{'='*70}")
+            print(f"IFCA ROUND {ifca_round + 1}/{num_ifca_round}")
+            print(f"{'='*70}")
 
+            # step 1: ifca cluster assignment
+            # each  client evaluates all models and picks the best one
+            cluster_client_lists = IFCA.assign_clients_to_clusters(
+                self.clients,
+                self.clusters,
+                self.device
+            )
 
+            # track cluster size 
+            cluster_sizes = [len(clients) for clients in cluster_client_lists]
+            self.metrics['cluster_sizes_history'].append(cluster_sizes)
 
+            #assign  clients to clusters
 
+            for cluster, client_list in zip(self.clusters, cluster_client_lists):
+                cluster.assign_clients(client_list)
 
+            #step 2 train each cluster with its assigned clients
+            print(f"\n{'='*70}")
+            print(f"TRAINING CLUSTER-SPECIFIC MODELS")
+            print(f"{'='*70}")   
 
+            for cluster in self.clusters:
+                cluster.train_federated(
+                    num_round=cluster_train_rounds,
+                    clients_per_round=clients_per_round,
+                    local_epochs=local_epochs
+                ) 
 
+            # step 3 : knowledge transfer ( if enabled and not last round)
+            if enable_knowledge_transfer and ifca_round < num_ifca_round - 1:
+                print(f"\n{'='*70}")
+                print(f"INTER-CLUSTER KNOWLEDGE TRANSFER")
+                print(f"{'='*70}")   
 
+                self._transfer_knowledge_between_clusters()
 
+            # evaluate after this ifca round
+            print(f"\n{'='*70}")
+            print(f"EVALUATION AFTER IFCA ROUND {ifca_round + 1}")
+            print(f"{'='*70}")    
 
+            for cluster in self.clusters:
+                if len(cluster.clients) > 0:
+                    acc = self._evaluate_model(cluster.model)
+                    print(f"Cluster {cluster.cluster_id} ({len(cluster.clients)} clients): {acc:.2f}%")
+        
+        # final aggregation all cluster models
+        print(f"\n{'='*70}")
+        print(f"FINAL AGGREGATION")
+        print(f"{'='*70}")
 
+        self.global_model = self._aggregate_clusters()
 
+        # final evaluation
+        final_acc = self._evaluate_model(self.global_model)
+        self.metrics['final_acc'] = final_acc
 
+        print(f"\n{'='*70}")
+        print(f"IFCA TRAINING COMPLETE!")
+        print(f"{'='*70}")
+        print(f"Final Global Accuracy: {final_acc:.2f}%")
 
+        # show cluster evolution
+        print(f"\nCluster Size Evolution:")
+        for i , sizes in enumerate(self.metrics['cluster_sizes_history']):
+            print(f"  IFCA Round {i+1}: {sizes}")
 
+    def _transfer_knowledge_between_clusters(self):
+        """Transfer knowledge between clusters (same as before)"""
+        print(f"\nTransferring knowledge between clusters...")     
 
+        #create transsfer dataset
+        transfer_dataset = Subset(
+            self.test_loader.dataset,
+            list(range(min(500, len(self.test_loader.dataset))))
+        )
 
+        transfer_loader = DataLoader(
+            transfer_dataset,
+            batch_size=self.batch_size,
+            shuffle=True
+        )  
 
+        #each clusters learn from others
+        active_clusters = [c for c in self.clusters if len(c.clients) > 0]
 
+        for target_cluster in active_clusters:
+            print(f"\nCluster {target_cluster.cluster_id} learning from others...")
+            
+            for source_cluster in active_clusters:
+                if source_cluster.cluster_id == target_cluster.cluster_id:
+                    continue
 
+                print(f"  Learning from Cluster {source_cluster.cluster_id}...")
+                
+                KnowledgeTransfer.distillation_transfer(
+                    source_model=source_cluster.model,
+                    target_model=target_cluster.model,
+                    transfer_data=transfer_loader,
+                    device=self.device,
+                    temperature=4.0,
+                    alpha=0.3,
+                    num_epochs=2
+                )
 
+    def _aggregate_clusters(self) -> nn.Module:
+        """Aggregate cluster models (weighted by cluster size)"""
+        print(f"\nAggregating {len(self.clusters)} cluster models...")
 
+        # getcluster sizes 
+        active_clusters = [(c, len(c.clients)) for c in self.clusters if len(c.clients) > 0]
+        
+        if len(active_clusters) == 0:
+            print("Warning: No active clusters!")
+            return copy.deepcopy(self.clusters[0].model) 
 
+        cluster_sizes = [size for _ , size in active_clusters]
+        total_clients = sum(cluster_sizes)
 
+        # weighted avg
+        global_weights = copy.deepcopy(active_clusters[0][0].get_model_weights())
 
+        for key in global_weights.keys():
+            global_weights[key] = torch.zeros_like(global_weights[key])
 
+            for (cluster, size) in active_clusters:
+                weight  = size / total_clients
+                cluster_weights = cluster.get_model_weights()
+                global_weights[key] += cluster_weights[key] * weight             
+           
+        # create global model
+        global_model = copy.deepcopy(active_clusters[0][0].model)
+        global_model.load_state_dict(global_weights)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        return global_model
+    
+    def _evaluate_model(self, model: nn.Module) -> float:
+        """Evaluate a model on test set"""
+        model.eval()
+        
+        correct = 0
+        total = 0
+        
+        with torch.no_grad():
+            for batch in self.test_loader:
+                input_ids = batch['input_ids'].to(self.device)
+                attention_mask = batch['attention_mask'].to(self.device)
+                images = batch['image'].to(self.device)
+                labels = batch['label'].to(self.device)
+                
+                logits = model(input_ids, attention_mask, images)
+                _, predicted = torch.max(logits, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
+        
+        accuracy = 100.0 * correct / total
+        return accuracy
+    
+    def get_global_model(self) -> nn.Module:
+        """Return final global model"""
+        return self.global_model
+        
+                 
 # ============================================================================
 # TESTING
 # ============================================================================
